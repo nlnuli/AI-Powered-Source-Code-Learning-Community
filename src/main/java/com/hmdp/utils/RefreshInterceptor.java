@@ -16,6 +16,7 @@ import static com.hmdp.utils.RedisConstants.LOGIN_USER_KEY;
 //实现HandlerInterceptor
 public class RefreshInterceptor implements HandlerInterceptor {
     //自己写的类没有纳入管理
+    //拦截器中也可以传入redisRemplate来进行统计
     private StringRedisTemplate redisTemplate;
 
     public RefreshInterceptor(StringRedisTemplate redisTemplate) {
@@ -45,9 +46,10 @@ public class RefreshInterceptor implements HandlerInterceptor {
 
         //：刷新
         redisTemplate.expire(LOGIN_USER_KEY + token, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES );
-
+        //统计UV用户：
+        redisTemplate.opsForHyperLogLog().add("user:uv", userDTO.getId().toString());
         UserHolder.saveUser(userDTO);
-
+        System.out.println(redisTemplate.opsForHyperLogLog().size("user:uv"));
         return true;
 
 

@@ -16,6 +16,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -88,6 +90,7 @@ public class BlogController {
             blog.setIcon(user.getIcon());
             // 查询是否被点赞：
             UserDTO user1 = UserHolder.getUser();
+            if(user1 == null) return ;
             Long userId1 = user1.getId();
             String key = RedisConstants.BLOG_LIKED_KEY + blog.getId();
             Boolean member = redisTemplate.opsForSet().isMember(key, userId1.toString());
@@ -101,7 +104,16 @@ public class BlogController {
         Blog blog = blogService.queryBlog(id);
         return Result.ok(blog);
 
-
     }
+    @GetMapping("/likes/{id}")
+    public Result Likes(@PathVariable("id") Long id) {
+        List<UserDTO> res = blogService.queryLikes(id);
+        if(res == null) {
+            return Result.ok(Collections.emptyList());
+        }
+        return Result.ok(res);
+    }
+
+
 
 }
