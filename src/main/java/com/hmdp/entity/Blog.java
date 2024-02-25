@@ -43,6 +43,7 @@ public class Blog implements Serializable {
     /**
      * 用户图标
      */
+    //数据库中什么都没有的代码
     @TableField(exist = false)
     private String icon;
     /**

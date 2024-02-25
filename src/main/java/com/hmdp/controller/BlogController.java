@@ -8,8 +8,11 @@ import com.hmdp.entity.Blog;
 import com.hmdp.entity.User;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IUserService;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -26,6 +29,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/blog")
 public class BlogController {
+    @Autowired
+    private StringRedisTemplate redisTemplate;
 
     @Resource
     private IBlogService blogService;
@@ -46,9 +51,13 @@ public class BlogController {
     @PutMapping("/like/{id}")
     public Result likeBlog(@PathVariable("id") Long id) {
         // 修改点赞数量
-        blogService.update()
-                .setSql("liked = liked + 1").eq("id", id).update();
-        return Result.ok();
+        //updateByid只会自动修改根据id选出然后覆盖的值。
+        boolean flag = blogService.likeBlog(id);
+        if(flag) return Result.ok();
+        else {
+            return Result.fail("点赞操作数据库失败");
+        }
+
     }
 
     @GetMapping("/of/me")
@@ -77,7 +86,22 @@ public class BlogController {
             User user = userService.getById(userId);
             blog.setName(user.getNickName());
             blog.setIcon(user.getIcon());
+            // 查询是否被点赞：
+            UserDTO user1 = UserHolder.getUser();
+            Long userId1 = user1.getId();
+            String key = RedisConstants.BLOG_LIKED_KEY + blog.getId();
+            Boolean member = redisTemplate.opsForSet().isMember(key, userId1.toString());
+            blog.setIsLike(member);
         });
         return Result.ok(records);
     }
+
+    @GetMapping("/{id}")
+    public Result queryBlog(@PathVariable("id") Long id) {
+        Blog blog = blogService.queryBlog(id);
+        return Result.ok(blog);
+
+
+    }
+
 }
