@@ -20,9 +20,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.util.DigestUtils;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -128,7 +130,7 @@ public class UserController {
         stringObjectMap.put("id",String.valueOf(u.getId()));
         stringObjectMap.put("nickName",u.getNickName());
         stringObjectMap.put("icon",u.getIcon());
-
+        //登陆的时候存储到redis中
         String tokenKey = LOGIN_USER_KEY + token;
         redisTemplate.opsForHash().putAll(tokenKey,stringObjectMap);
         redisTemplate.expire(tokenKey, LOGIN_USER_TTL, TimeUnit.MINUTES);
@@ -137,6 +139,71 @@ public class UserController {
         //  返回给客户端
         return Result.ok(token);
     }
+
+
+    /***
+     * 新增用户密码注册窗口
+     * @param employee
+     * @return
+     */
+    @PostMapping("register")
+    public Result save( @RequestBody User employee) {
+        log.info("新增员工，员工信息：{}", employee.toString());
+        //传过来的时候可以自动封装的
+        //使用了MD5来进行加载
+        employee.setPassword(DigestUtils.md5DigestAsHex(employee.getPassword().getBytes()));
+        userService.save(employee);
+        return Result.ok("yes");
+    }
+
+    @PostMapping("/login2")
+    public Result login( @RequestBody User employee){
+
+        //1、将页面提交的密码password进行md5加密处理
+        String password = employee.getPassword();
+        password = DigestUtils.md5DigestAsHex(password.getBytes());
+
+        //2、根据页面提交的用户名username查询数据库
+
+        //查询数据库：
+        LambdaQueryWrapper<User> lambdaQueryWrapper = new LambdaQueryWrapper<>();
+        lambdaQueryWrapper.eq(User::getPhone, employee.getPhone());
+        User user = userService.getOne(lambdaQueryWrapper);
+
+
+        //3、如果没有查询到则返回登录失败结果
+        if(user == null){
+            return Result.fail("失败");
+        }
+
+        //4、密码比对，如果不一致则返回登录失败结果
+        if(!user.getPassword().equals(password)){
+            return Result.fail("失败");
+        }
+
+        //登陆成功，需要存入到redis中：
+        // 随机生成Token   给客户端的
+        String token = UUID.randomUUID().toString(true);
+        //将User转为Hash存储
+        UserDTO u = new UserDTO();
+        BeanUtils.copyProperties(user,u);
+        Map<String, String> stringObjectMap = new HashMap<>();
+        stringObjectMap.put("id",String.valueOf(u.getId()));
+        stringObjectMap.put("nickName",u.getNickName());
+        stringObjectMap.put("icon",u.getIcon());
+        //登陆的时候存储到redis中
+        String tokenKey = LOGIN_USER_KEY + token;
+        redisTemplate.opsForHash().putAll(tokenKey,stringObjectMap);
+        redisTemplate.expire(tokenKey, LOGIN_USER_TTL, TimeUnit.MINUTES);
+
+        //session.setAttribute("user", u);
+        //  返回给客户端
+        return Result.ok(token);
+        //相当于给客户端返回了token，前端存储这个token，然后每一次请求都会携带这个token
+
+
+    }
+
 
     /**
      * 登出功能

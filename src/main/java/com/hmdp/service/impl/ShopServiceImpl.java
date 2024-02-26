@@ -9,9 +9,12 @@ import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.utils.BloomFilterManager;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisData;
 import io.netty.util.internal.StringUtil;
+import org.redisson.api.RBloomFilter;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -34,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IShopService {
     @Autowired
     private StringRedisTemplate redisTemplate;
+
 
     // 保存一份！！！！
 //    @Override
@@ -90,6 +94,52 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         return shop;
     }
 
+
+    public Shop queryWithPassThroughWithBoomFilter(Long id) {
+
+        String key = RedisConstants.CACHE_SHOP_KEY + id;
+        RBloomFilter<Object> bloomFilter = BloomFilterManager.getInstance();
+        //bloom filter 来判断
+        boolean contains = bloomFilter.contains(id);
+        if(!contains) {
+            return null;
+        }
+        String val = redisTemplate.opsForValue().get(key);
+        //命中直接返回
+        if(StringUtils.isNotBlank(val)) {
+            //转换：
+            Shop shop = JSONUtil.toBean(val, Shop.class);
+            return shop;
+        }
+        if(val != null) {
+            //只有""这样一种可能了
+            //
+            return null;
+        }
+        //如果返回的是 null
+        //不命中需要查询数据库：
+        Shop shop = getById(id);
+        if(shop == null) {
+            //不存在返回404
+            redisTemplate.opsForValue().set(key,"", 2L, TimeUnit.MINUTES);
+            return null;
+        }
+        //存在：
+        val = JSONUtil.toJsonStr(shop);
+        //保存到bloom过滤器中，建立Bloom过滤器：
+        bloomFilter.add(id);
+        //写会Redis中，然后返回商铺信息
+        redisTemplate.opsForValue().set(key, val, 30L, TimeUnit.MINUTES);
+        return shop;
+
+    }
+
+
+
+
+
+
+
     @Override
     public Result queryById(Long id) {
         // 缓存穿透
@@ -99,7 +149,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 //       }
 //       return  Result.ok(shop);
 //        Shop shop = queryWithMutexLock(id);
-        Shop shop = queryLogicExpire(id);
+        Shop shop = queryWithPassThroughWithBoomFilter(id);
         if(shop == null) {
            return Result.fail("店铺不存在");
        }
